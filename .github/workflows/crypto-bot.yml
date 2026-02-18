@@ -2,8 +2,12 @@ name: Crypto Signals Bot
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # Runs every 5 minutes
-  workflow_dispatch:        # Allows manual run
+    - cron: "*/5 * * * *"   # Every 5 minutes
+  workflow_dispatch:
+
+concurrency:
+  group: crypto-bot
+  cancel-in-progress: true
 
 jobs:
   run-bot:
@@ -20,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install ccxt pandas requests
 
       - name: Run bot

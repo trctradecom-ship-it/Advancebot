@@ -19,8 +19,6 @@ LOOKBACK = 15
 STATE_FILE = "last_signal.json"
 
 
-# ================= TELEGRAM FUNCTION =================
-
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
@@ -37,8 +35,6 @@ def send_telegram(msg):
         print("Telegram Error:", e)
 
 
-# ================= STATE FUNCTIONS =================
-
 def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
@@ -51,8 +47,6 @@ def save_state(state):
         json.dump(state, f)
 
 
-# ================= FETCH DATA =================
-
 def fetch_data(exchange, pair, tf):
     ohlcv = exchange.fetch_ohlcv(pair, tf, limit=200)
     return pd.DataFrame(
@@ -60,21 +54,18 @@ def fetch_data(exchange, pair, tf):
     )
 
 
-# ================= MAIN LOGIC =================
-
 def main():
     exchange = ccxt.mexc()
     state = load_state()
 
     # ===== BOT STARTED MESSAGE (Manual Run Only) =====
-if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
-    send_telegram(
-        "🤖 <b>Crypto Signals Bot Started</b>\n"
-        "📡 Exchange: MEXC\n"
-        "⚙️ Strategy: EMA 20/50 + Breakout\n"
-        "🚀 Status: Manually Started"
-    )
-    
+    if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        send_telegram(
+            "🤖 <b>Crypto Signals Bot Started</b>\n"
+            "📡 Exchange: MEXC\n"
+            "⚙️ Strategy: EMA 20/50 + Breakout\n"
+            "🚀 Status: Manually Started"
+        )
 
     for pair in PAIRS:
         for tf in TIMEFRAMES:
@@ -95,7 +86,6 @@ if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
 
                 utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-                # ===== EMA BUY =====
                 if prev.ema20 <= prev.ema50 and curr.ema20 > curr.ema50:
                     if pair_state.get("ema") != "BUY":
                         send_telegram(
@@ -107,7 +97,6 @@ if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                         )
                         pair_state["ema"] = "BUY"
 
-                # ===== EMA SELL =====
                 elif prev.ema20 >= prev.ema50 and curr.ema20 < curr.ema50:
                     if pair_state.get("ema") != "SELL":
                         send_telegram(
@@ -119,7 +108,6 @@ if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                         )
                         pair_state["ema"] = "SELL"
 
-                # ===== BULLISH BREAKOUT =====
                 if prev.close <= swing_high and curr.close > swing_high:
                     if pair_state.get("breakout") != "BULLISH":
                         send_telegram(
@@ -132,7 +120,6 @@ if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                         )
                         pair_state["breakout"] = "BULLISH"
 
-                # ===== BEARISH BREAKDOWN =====
                 elif prev.close >= swing_low and curr.close < swing_low:
                     if pair_state.get("breakout") != "BEARISH":
                         send_telegram(
@@ -155,3 +142,4 @@ if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
 
 if __name__ == "__main__":
     main()
+    

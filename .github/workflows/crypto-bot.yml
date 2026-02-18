@@ -1,0 +1,28 @@
+name: Crypto Signals Bot
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # Runs every 5 minutes
+  workflow_dispatch:        # Allows manual run
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ccxt pandas requests
+
+      - name: Run bot
+        run: python main.py
+        

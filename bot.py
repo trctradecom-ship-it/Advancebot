@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 # ================= TELEGRAM =================
-BOT_TOKEN = "7213196077:AAE6OqSQuAnMYm7oiuaViYpwH0VqgilVPBI"
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Loaded securely from GitHub Secret
 CHAT_ID = "-1003734649641"
 # ===========================================
 
@@ -20,6 +20,10 @@ STATE_FILE = "last_signal.json"
 
 
 def send_telegram(msg):
+    if not BOT_TOKEN:
+        print("Error: BOT_TOKEN not found in environment variables.")
+        return
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
         requests.post(
@@ -55,6 +59,9 @@ def fetch_data(exchange, pair, tf):
 
 
 def main():
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN is not set. Add it as GitHub Secret.")
+
     exchange = ccxt.mexc()
     state = load_state()
 
@@ -86,6 +93,7 @@ def main():
 
                 utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
+                # ===== EMA CROSS =====
                 if prev.ema20 <= prev.ema50 and curr.ema20 > curr.ema50:
                     if pair_state.get("ema") != "BUY":
                         send_telegram(
@@ -108,6 +116,7 @@ def main():
                         )
                         pair_state["ema"] = "SELL"
 
+                # ===== BREAKOUT =====
                 if prev.close <= swing_high and curr.close > swing_high:
                     if pair_state.get("breakout") != "BULLISH":
                         send_telegram(

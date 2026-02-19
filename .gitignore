@@ -5,8 +5,5 @@
 __pycache__/
 *.pyc
 
-# State files
-last_signal.json
-
 # OS files
 .DS_Store

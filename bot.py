@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 # ================= TELEGRAM =================
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Loaded securely from GitHub Secret
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = "-1003734649641"
 # ===========================================
 
@@ -20,138 +20,162 @@ STATE_FILE = "last_signal.json"
 
 
 def send_telegram(msg):
-    if not BOT_TOKEN:
-        print("Error: BOT_TOKEN not found in environment variables.")
-        return
+    if not BOT_TOKEN:
+        print("BOT_TOKEN missing")
+        return
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    try:
-        requests.post(
-            url,
-            json={
-                "chat_id": CHAT_ID,
-                "text": msg,
-                "parse_mode": "HTML"
-            },
-            timeout=10
-        )
-    except Exception as e:
-        print("Telegram Error:", e)
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    try:
+        requests.post(
+            url,
+            json={
+                "chat_id": CHAT_ID,
+                "text": msg,
+                "parse_mode": "HTML"
+            },
+            timeout=10
+        )
+    except Exception as e:
+        print("Telegram error:", e)
 
 
 def load_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    return {}
 
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
 
 
 def fetch_data(exchange, pair, tf):
-    ohlcv = exchange.fetch_ohlcv(pair, tf, limit=200)
-    return pd.DataFrame(
-        ohlcv, columns=["time", "open", "high", "low", "close", "volume"]
-    )
+    try:
+        ohlcv = exchange.fetch_ohlcv(pair, tf, limit=200)
+        df = pd.DataFrame(
+            ohlcv,
+            columns=["time", "open", "high", "low", "close", "volume"]
+        )
+        return df
+    except Exception as e:
+        print(f"Fetch error {pair} {tf}: {e}")
+        return None
 
 
 def main():
-    if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN is not set. Add it as GitHub Secret.")
 
-    exchange = ccxt.binance({
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN is not set in GitHub Secrets")
+
+    exchange = ccxt.binance({
         "enableRateLimit": True
     })
-    
-    state = load_state()
 
-    # ===== BOT STARTED MESSAGE (Manual Run Only) =====
-    if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
-        send_telegram(
-            "🤖 <b>Crypto Signals Bot Started</b>\n"
-            "📡 Exchange: MEXC\n"
-            "⚙️ Strategy: EMA 20/50 + Breakout\n"
-            "🚀 Status: Manually Started"
-        )
+    state = load_state()
 
-    for pair in PAIRS:
-        for tf in TIMEFRAMES:
-            try:
-                df = fetch_data(exchange, pair, tf)
+    # BOT START MESSAGE (manual run only)
+    if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        send_telegram(
+            "🤖 <b>Crypto Signals Bot Started</b>\n"
+            "📡 Exchange: Binance\n"
+            "⚙️ Strategy: EMA 20/50 + Breakout\n"
+            "🚀 Status: Manual Start"
+        )
 
-                df["ema20"] = df["close"].ewm(span=EMA_FAST, adjust=False).mean()
-                df["ema50"] = df["close"].ewm(span=EMA_SLOW, adjust=False).mean()
+    for pair in PAIRS:
+        for tf in TIMEFRAMES:
 
-                prev = df.iloc[-2]
-                curr = df.iloc[-1]
+            try:
 
-                swing_high = df["high"].iloc[-(LOOKBACK + 1):-1].max()
-                swing_low = df["low"].iloc[-(LOOKBACK + 1):-1].min()
+                df = fetch_data(exchange, pair, tf)
 
-                key = f"{pair}_{tf}"
-                pair_state = state.get(key, {})
+                if df is None:
+                    continue
 
-                utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                df["ema20"] = df["close"].ewm(span=EMA_FAST, adjust=False).mean()
+                df["ema50"] = df["close"].ewm(span=EMA_SLOW, adjust=False).mean()
 
-                # ===== EMA CROSS =====
-                if prev.ema20 <= prev.ema50 and curr.ema20 > curr.ema50:
-                    if pair_state.get("ema") != "BUY":
-                        send_telegram(
-                            f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
-                        pair_state["ema"] = "BUY"
+                prev = df.iloc[-2]
+                curr = df.iloc[-1]
 
-                elif prev.ema20 >= prev.ema50 and curr.ema20 < curr.ema50:
-                    if pair_state.get("ema") != "SELL":
-                        send_telegram(
-                            f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
-                        pair_state["ema"] = "SELL"
+                swing_high = df["high"].iloc[-(LOOKBACK + 1):-1].max()
+                swing_low = df["low"].iloc[-(LOOKBACK + 1):-1].min()
 
-                # ===== BREAKOUT =====
-                if prev.close <= swing_high and curr.close > swing_high:
-                    if pair_state.get("breakout") != "BULLISH":
-                        send_telegram(
-                            f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"📈 Level: {swing_high:.2f}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
-                        pair_state["breakout"] = "BULLISH"
+                key = f"{pair}_{tf}"
+                pair_state = state.get(key, {})
 
-                elif prev.close >= swing_low and curr.close < swing_low:
-                    if pair_state.get("breakout") != "BEARISH":
-                        send_telegram(
-                            f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"📉 Level: {swing_low:.2f}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
-                        pair_state["breakout"] = "BEARISH"
+                utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-                state[key] = pair_state
+                # ===== EMA CROSS =====
+                if prev.ema20 <= prev.ema50 and curr.ema20 > curr.ema50:
 
-            except Exception as e:
-                print(f"Error {pair} {tf}: {e}")
+                    if pair_state.get("ema") != "BUY":
 
-    save_state(state)
+                        send_telegram(
+                            f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
+                            f"📊 Pair: {pair}\n"
+                            f"⏱ Timeframe: {tf}\n"
+                            f"💰 Price: {curr.close:.2f}\n"
+                            f"🕒 UTC: {utc}"
+                        )
+
+                        pair_state["ema"] = "BUY"
+
+                elif prev.ema20 >= prev.ema50 and curr.ema20 < curr.ema50:
+
+                    if pair_state.get("ema") != "SELL":
+
+                        send_telegram(
+                            f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
+                            f"📊 Pair: {pair}\n"
+                            f"⏱ Timeframe: {tf}\n"
+                            f"💰 Price: {curr.close:.2f}\n"
+                            f"🕒 UTC: {utc}"
+                        )
+
+                        pair_state["ema"] = "SELL"
+
+                # ===== BREAKOUT =====
+                if prev.close <= swing_high and curr.close > swing_high:
+
+                    if pair_state.get("breakout") != "BULLISH":
+
+                        send_telegram(
+                            f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
+                            f"📊 Pair: {pair}\n"
+                            f"⏱ Timeframe: {tf}\n"
+                            f"📈 Level: {swing_high:.2f}\n"
+                            f"💰 Price: {curr.close:.2f}\n"
+                            f"🕒 UTC: {utc}"
+                        )
+
+                        pair_state["breakout"] = "BULLISH"
+
+                elif prev.close >= swing_low and curr.close < swing_low:
+
+                    if pair_state.get("breakout") != "BEARISH":
+
+                        send_telegram(
+                            f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
+                            f"📊 Pair: {pair}\n"
+                            f"⏱ Timeframe: {tf}\n"
+                            f"📉 Level: {swing_low:.2f}\n"
+                            f"💰 Price: {curr.close:.2f}\n"
+                            f"🕒 UTC: {utc}"
+                        )
+
+                        pair_state["breakout"] = "BEARISH"
+
+                state[key] = pair_state
+
+            except Exception as e:
+                print(f"Error {pair} {tf}: {e}")
+
+    save_state(state)
 
 
 if __name__ == "__main__":
-    main()
-    
+    main()

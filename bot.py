@@ -70,8 +70,8 @@ def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN is not set in GitHub Secrets")
 
-    exchange = ccxt.binance({
-        "enableRateLimit": True
+    exchange = ccxt.mexc({
+    "enableRateLimit": True
     })
 
     state = load_state()

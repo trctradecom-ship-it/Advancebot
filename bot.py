@@ -80,7 +80,7 @@ def main():
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         send_telegram(
             "🤖 <b>Crypto Signals Bot Started</b>\n"
-            "📡 Exchange: Binance\n"
+            "📡 Exchange: MEXC\n"
             "⚙️ Strategy: EMA 20/50 + Breakout\n"
             "🚀 Status: Manual Start"
         )

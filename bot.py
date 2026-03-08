@@ -71,12 +71,11 @@ def main():
         raise ValueError("BOT_TOKEN is not set in GitHub Secrets")
 
     exchange = ccxt.mexc({
-    "enableRateLimit": True
+        "enableRateLimit": True
     })
 
     state = load_state()
 
-    # BOT START MESSAGE (manual run only)
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         send_telegram(
             "🤖 <b>Crypto Signals Bot Started</b>\n"
@@ -109,10 +108,13 @@ def main():
 
                 utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
+                # Use closed candle time
+                candle_time = int(prev.time)
+
                 # ===== EMA CROSS =====
                 if prev.ema20 <= prev.ema50 and curr.ema20 > curr.ema50:
 
-                    if pair_state.get("ema") != "BUY":
+                    if pair_state.get("ema") != "BUY" or pair_state.get("time") != candle_time:
 
                         send_telegram(
                             f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
@@ -123,10 +125,11 @@ def main():
                         )
 
                         pair_state["ema"] = "BUY"
+                        pair_state["time"] = candle_time
 
                 elif prev.ema20 >= prev.ema50 and curr.ema20 < curr.ema50:
 
-                    if pair_state.get("ema") != "SELL":
+                    if pair_state.get("ema") != "SELL" or pair_state.get("time") != candle_time:
 
                         send_telegram(
                             f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
@@ -137,11 +140,12 @@ def main():
                         )
 
                         pair_state["ema"] = "SELL"
+                        pair_state["time"] = candle_time
 
                 # ===== BREAKOUT =====
                 if prev.close <= swing_high and curr.close > swing_high:
 
-                    if pair_state.get("breakout") != "BULLISH":
+                    if pair_state.get("breakout") != "BULLISH" or pair_state.get("time") != candle_time:
 
                         send_telegram(
                             f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
@@ -153,10 +157,11 @@ def main():
                         )
 
                         pair_state["breakout"] = "BULLISH"
+                        pair_state["time"] = candle_time
 
                 elif prev.close >= swing_low and curr.close < swing_low:
 
-                    if pair_state.get("breakout") != "BEARISH":
+                    if pair_state.get("breakout") != "BEARISH" or pair_state.get("time") != candle_time:
 
                         send_telegram(
                             f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
@@ -168,6 +173,7 @@ def main():
                         )
 
                         pair_state["breakout"] = "BEARISH"
+                        pair_state["time"] = candle_time
 
                 state[key] = pair_state
 

@@ -91,91 +91,88 @@ def main():
 
                 df = fetch_data(exchange, pair, tf)
 
-                if df is None:
+                if df is None or len(df) < 3:
                     continue
 
                 df["ema20"] = df["close"].ewm(span=EMA_FAST, adjust=False).mean()
                 df["ema50"] = df["close"].ewm(span=EMA_SLOW, adjust=False).mean()
 
-                prev = df.iloc[-2]
-                curr = df.iloc[-1]
-
-                swing_high = df["high"].iloc[-(LOOKBACK + 1):-1].max()
-                swing_low = df["low"].iloc[-(LOOKBACK + 1):-1].min()
+                prev2 = df.iloc[-3]  # previous closed candle
+                prev1 = df.iloc[-2]  # latest closed candle
+                curr = df.iloc[-1]   # forming candle
 
                 key = f"{pair}_{tf}"
                 pair_state = state.get(key, {})
 
                 utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-                # Use closed candle time
-                candle_time = int(prev.time)
+                candle_time = int(prev1.time)
 
-                # ===== EMA CROSS =====
-                if prev.ema20 <= prev.ema50 and curr.ema20 > curr.ema50:
+                # skip if already processed this candle
+                if pair_state.get("last_candle") == candle_time:
+                    continue
 
-                    if pair_state.get("ema") != "BUY" or pair_state.get("time") != candle_time:
+                swing_high = df["high"].iloc[-(LOOKBACK + 2):-2].max()
+                swing_low = df["low"].iloc[-(LOOKBACK + 2):-2].min()
 
-                        send_telegram(
-                            f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
+                signal_sent = False
 
-                        pair_state["ema"] = "BUY"
-                        pair_state["time"] = candle_time
+                # ===== EMA CROSS (closed candle confirmation) =====
+                if prev2.ema20 <= prev2.ema50 and prev1.ema20 > prev1.ema50:
 
-                elif prev.ema20 >= prev.ema50 and curr.ema20 < curr.ema50:
+                    send_telegram(
+                        f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
+                        f"📊 Pair: {pair}\n"
+                        f"⏱ Timeframe: {tf}\n"
+                        f"💰 Price: {prev1.close:.2f}\n"
+                        f"🕒 UTC: {utc}"
+                    )
 
-                    if pair_state.get("ema") != "SELL" or pair_state.get("time") != candle_time:
+                    signal_sent = True
 
-                        send_telegram(
-                            f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
+                elif prev2.ema20 >= prev2.ema50 and prev1.ema20 < prev1.ema50:
 
-                        pair_state["ema"] = "SELL"
-                        pair_state["time"] = candle_time
+                    send_telegram(
+                        f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
+                        f"📊 Pair: {pair}\n"
+                        f"⏱ Timeframe: {tf}\n"
+                        f"💰 Price: {prev1.close:.2f}\n"
+                        f"🕒 UTC: {utc}"
+                    )
+
+                    signal_sent = True
 
                 # ===== BREAKOUT =====
-                if prev.close <= swing_high and curr.close > swing_high:
+                if prev1.close > swing_high:
 
-                    if pair_state.get("breakout") != "BULLISH" or pair_state.get("time") != candle_time:
+                    send_telegram(
+                        f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
+                        f"📊 Pair: {pair}\n"
+                        f"⏱ Timeframe: {tf}\n"
+                        f"📈 Level: {swing_high:.2f}\n"
+                        f"💰 Price: {prev1.close:.2f}\n"
+                        f"🕒 UTC: {utc}"
+                    )
 
-                        send_telegram(
-                            f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"📈 Level: {swing_high:.2f}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
+                    signal_sent = True
 
-                        pair_state["breakout"] = "BULLISH"
-                        pair_state["time"] = candle_time
+                elif prev1.close < swing_low:
 
-                elif prev.close >= swing_low and curr.close < swing_low:
+                    send_telegram(
+                        f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
+                        f"📊 Pair: {pair}\n"
+                        f"⏱ Timeframe: {tf}\n"
+                        f"📉 Level: {swing_low:.2f}\n"
+                        f"💰 Price: {prev1.close:.2f}\n"
+                        f"🕒 UTC: {utc}"
+                    )
 
-                    if pair_state.get("breakout") != "BEARISH" or pair_state.get("time") != candle_time:
+                    signal_sent = True
 
-                        send_telegram(
-                            f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
-                            f"📊 Pair: {pair}\n"
-                            f"⏱ Timeframe: {tf}\n"
-                            f"📉 Level: {swing_low:.2f}\n"
-                            f"💰 Price: {curr.close:.2f}\n"
-                            f"🕒 UTC: {utc}"
-                        )
-
-                        pair_state["breakout"] = "BEARISH"
-                        pair_state["time"] = candle_time
-
-                state[key] = pair_state
+                # mark candle as processed
+                if signal_sent:
+                    pair_state["last_candle"] = candle_time
+                    state[key] = pair_state
 
             except Exception as e:
                 print(f"Error {pair} {tf}: {e}")

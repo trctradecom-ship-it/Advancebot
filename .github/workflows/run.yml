@@ -15,6 +15,7 @@ jobs:
 
     env:
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
@@ -32,4 +33,3 @@ jobs:
 
       - name: Run Bot
         run: python bot.py
-        

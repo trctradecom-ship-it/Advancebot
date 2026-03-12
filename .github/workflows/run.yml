@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: uses: actions/checkout@v4
+        uses: uses: actions/checkout@v3
 
       - name: Setup Python
-        uses: uses: actions/setup-python@v5
+        uses: uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 

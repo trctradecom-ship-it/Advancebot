@@ -19,7 +19,7 @@ EMA_SLOW = 50
 LOOKBACK = 20
 
 STATE_FILE = "last_signal.json"
-SIGNAL_COOLDOWN = 7200   # (kept but not used for duplicate logic)
+SIGNAL_COOLDOWN = 7200   # keep same (optional, not required now)
 
 
 # ================= TELEGRAM =================
@@ -98,7 +98,7 @@ def main():
     state = load_state()
     now = int(time.time())
 
-    # ✅ BOT START MESSAGE (UNCHANGED)
+    # BOT START MESSAGE
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
 
         send_telegram(
@@ -126,23 +126,20 @@ def main():
                 prev2 = df.iloc[-3]
                 prev1 = df.iloc[-2]
 
-                candle_time = int(prev1.time)   # ✅ KEY FIX
-
                 utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
                 swing_high = df["high"].iloc[-(LOOKBACK+2):-2].max()
                 swing_low  = df["low"].iloc[-(LOOKBACK+2):-2].min()
 
+                # ✅ UNIQUE CANDLE ID (NEW)
+                candle_time = int(prev1["time"])
+
                 # ================= EMA BUY =================
                 if prev2.ema20 <= prev2.ema50 and prev1.ema20 > prev1.ema50:
 
-                    key = f"{pair}_{tf}_EMA_BUY"
+                    key = f"{pair}_EMA_BUY_{candle_time}_{round(prev1.close,2)}"
 
-                    # ✅ STRICT NO DUPLICATE
-                    if (
-                        key not in state or
-                        state[key]["candle_time"] != candle_time
-                    ):
+                    if key not in state or now - state.get(key,0) > SIGNAL_COOLDOWN:
 
                         signals.setdefault(key,{
                             "pair":pair,
@@ -158,12 +155,9 @@ def main():
                 # ================= EMA SELL =================
                 elif prev2.ema20 >= prev2.ema50 and prev1.ema20 < prev1.ema50:
 
-                    key = f"{pair}_{tf}_EMA_SELL"
+                    key = f"{pair}_EMA_SELL_{candle_time}_{round(prev1.close,2)}"
 
-                    if (
-                        key not in state or
-                        state[key]["candle_time"] != candle_time
-                    ):
+                    if key not in state or now - state.get(key,0) > SIGNAL_COOLDOWN:
 
                         signals.setdefault(key,{
                             "pair":pair,
@@ -179,12 +173,9 @@ def main():
                 # ================= BREAKOUT BUY =================
                 if prev1.close > swing_high:
 
-                    key = f"{pair}_{tf}_BREAKOUT_BUY"
+                    key = f"{pair}_BREAKOUT_BUY_{candle_time}_{round(prev1.close,2)}"
 
-                    if (
-                        key not in state or
-                        state[key]["candle_time"] != candle_time
-                    ):
+                    if key not in state or now - state.get(key,0) > SIGNAL_COOLDOWN:
 
                         signals.setdefault(key,{
                             "pair":pair,
@@ -201,12 +192,9 @@ def main():
                 # ================= BREAKOUT SELL =================
                 elif prev1.close < swing_low:
 
-                    key = f"{pair}_{tf}_BREAKOUT_SELL"
+                    key = f"{pair}_BREAKOUT_SELL_{candle_time}_{round(prev1.close,2)}"
 
-                    if (
-                        key not in state or
-                        state[key]["candle_time"] != candle_time
-                    ):
+                    if key not in state or now - state.get(key,0) > SIGNAL_COOLDOWN:
 
                         signals.setdefault(key,{
                             "pair":pair,
@@ -233,60 +221,113 @@ def main():
 
         tf_text = ", ".join(sorted(tfs))
 
+        # EMA BUY
         if data["type"] == "EMA_BUY":
 
-            msg = (
-            f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
-            f"📊 Pair: {pair}\n"
-            f"⏱ Timeframe: {tf_text}\n"
-            f"💰 Price: {price:.2f}\n"
-            f"🕒 UTC: {utc}"
-            )
+            if len(tfs) > 1:
 
+                msg = (
+                f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframes: {tf_text}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
+
+            else:
+
+                msg = (
+                f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframe: {tf_text}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
+
+
+        # EMA SELL
         elif data["type"] == "EMA_SELL":
 
-            msg = (
-            f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
-            f"📊 Pair: {pair}\n"
-            f"⏱ Timeframe: {tf_text}\n"
-            f"💰 Price: {price:.2f}\n"
-            f"🕒 UTC: {utc}"
-            )
+            if len(tfs) > 1:
 
+                msg = (
+                f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframes: {tf_text}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
+
+            else:
+
+                msg = (
+                f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframe: {tf_text}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
+
+
+        # BREAKOUT BUY
         elif data["type"] == "BREAKOUT_BUY":
 
-            msg = (
-            f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
-            f"📊 Pair: {pair}\n"
-            f"⏱ Timeframe: {tf_text}\n"
-            f"📈 Level: {data['level']:.2f}\n"
-            f"💰 Price: {price:.2f}\n"
-            f"🕒 UTC: {utc}"
-            )
+            if len(tfs) > 1:
 
+                msg = (
+                f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframes: {tf_text}\n"
+                f"📈 Level: {data['level']:.2f}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
+
+            else:
+
+                msg = (
+                f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframe: {tf_text}\n"
+                f"📈 Level: {data['level']:.2f}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
+
+
+        # BREAKOUT SELL
         else:
 
-            msg = (
-            f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
-            f"📊 Pair: {pair}\n"
-            f"⏱ Timeframe: {tf_text}\n"
-            f"📉 Level: {data['level']:.2f}\n"
-            f"💰 Price: {price:.2f}\n"
-            f"🕒 UTC: {utc}"
-            )
+            if len(tfs) > 1:
+
+                msg = (
+                f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframes: {tf_text}\n"
+                f"📉 Level: {data['level']:.2f}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
+
+            else:
+
+                msg = (
+                f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
+                f"📊 Pair: {pair}\n"
+                f"⏱ Timeframe: {tf_text}\n"
+                f"📉 Level: {data['level']:.2f}\n"
+                f"💰 Price: {price:.2f}\n"
+                f"🕒 UTC: {utc}"
+                )
 
         send_telegram(msg)
 
         time.sleep(1)
 
-        # ✅ SAVE STATE (IMPORTANT)
-        state[key] = {
-            "time": now,
-            "candle_time": candle_time
-        }
+        state[key] = now
 
     save_state(state)
 
 
 if __name__ == "__main__":
-    main()         
+    main()

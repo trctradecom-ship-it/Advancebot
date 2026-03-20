@@ -20,8 +20,15 @@ LOOKBACK = 20
 
 STATE_FILE = "last_signal.json"
 
-# ✅ Fresh candle filter (prevents restart spam)
-MAX_CANDLE_AGE = 2 * 60 * 60   # 2 hours
+# ✅ Timeframe-based validity (PRO)
+TF_SECONDS = {
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400
+}
 
 
 # ================= TELEGRAM =================
@@ -195,13 +202,16 @@ def main():
 
     for key, data in signals.items():
 
-        # ❌ Skip old candles (prevents restart spam)
-        if now - data["candle"] > MAX_CANDLE_AGE:
+        # ✅ Timeframe-aware freshness
+        tf_seconds_list = [TF_SECONDS.get(tf, 300) for tf in data["timeframes"]]
+        min_tf_sec = min(tf_seconds_list)
+
+        # ❌ Skip old signals
+        if now - data["candle"] > min_tf_sec * 2:
             continue
 
+        # ❌ Prevent duplicate same candle
         last_candle = state.get(key)
-
-        # ❌ Prevent duplicate on same candle
         if last_candle == data["candle"]:
             continue
 
@@ -253,7 +263,7 @@ def main():
         send_telegram(msg)
         time.sleep(1)
 
-        # ✅ Save candle to block duplicates
+        # ✅ Save candle
         state[key] = data["candle"]
 
     save_state(state)

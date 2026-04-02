@@ -22,7 +22,6 @@ STATE_FILE = "last_signal.json"
 
 # ✅ Timeframe-based validity (PRO)
 TF_SECONDS = {
-    "5m": 300,
     "15m": 900,
     "30m": 1800,
     "1h": 3600,

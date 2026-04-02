@@ -12,7 +12,7 @@ CHAT_ID = "-1003734649641"
 # ===========================================
 
 PAIRS = ["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT"]
-TIMEFRAMES = ["5m","15m","30m","1h","4h","1d"]
+TIMEFRAMES = ["15m","30m","1h","4h","1d"]
 
 EMA_FAST = 20
 EMA_SLOW = 50

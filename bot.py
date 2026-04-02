@@ -20,7 +20,7 @@ LOOKBACK = 20
 
 STATE_FILE = "last_signal.json"
 
-# ✅ Timeframe-based validity (PRO)
+# ✅ Timeframe-based validity
 TF_SECONDS = {
     "15m": 900,
     "30m": 1800,
@@ -39,7 +39,7 @@ def send_telegram(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     try:
-        requests.post(
+        res = requests.post(
             url,
             json={
                 "chat_id": CHAT_ID,
@@ -48,8 +48,11 @@ def send_telegram(msg):
             },
             timeout=10
         )
+        if res.status_code != 200:
+            print("Telegram error:", res.text)
+
     except Exception as e:
-        print("Telegram error:", e)
+        print("Telegram exception:", e)
 
 
 # ================= STATE =================
@@ -95,7 +98,7 @@ def main():
     state = load_state()
     signals = {}
 
-    # ================= BOT START MESSAGE =================
+    # ================= BOT START =================
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         send_telegram(
             "🤖 <b>Crypto Signals Bot Started</b>\n"
@@ -125,10 +128,16 @@ def main():
                 swing_high = df["high"].iloc[-(LOOKBACK+2):-2].max()
                 swing_low  = df["low"].iloc[-(LOOKBACK+2):-2].min()
 
-                candle_time = int(prev1["time"])
+                # ✅ FIX: convert ms → sec
+                candle_time = int(prev1["time"] / 1000)
 
                 # ================= EMA BUY =================
                 if prev2.ema20 <= prev2.ema50 and prev1.ema20 > prev1.ema50:
+
+                    state_key = f"{pair}_{tf}_EMA_BUY"
+                    if state.get(state_key) and state[state_key] >= candle_time:
+                        continue
+                    state[state_key] = candle_time
 
                     key = f"{pair}_EMA_BUY"
 
@@ -146,6 +155,11 @@ def main():
                 # ================= EMA SELL =================
                 elif prev2.ema20 >= prev2.ema50 and prev1.ema20 < prev1.ema50:
 
+                    state_key = f"{pair}_{tf}_EMA_SELL"
+                    if state.get(state_key) and state[state_key] >= candle_time:
+                        continue
+                    state[state_key] = candle_time
+
                     key = f"{pair}_EMA_SELL"
 
                     signals.setdefault(key, {
@@ -160,7 +174,12 @@ def main():
                     signals[key]["timeframes"].append(tf)
 
                 # ================= BREAKOUT BUY =================
-                if prev1.close > swing_high:
+                if prev2.close <= swing_high and prev1.close > swing_high:
+
+                    state_key = f"{pair}_{tf}_BREAKOUT_BUY"
+                    if state.get(state_key) and state[state_key] >= candle_time:
+                        continue
+                    state[state_key] = candle_time
 
                     key = f"{pair}_BREAKOUT_BUY"
 
@@ -177,7 +196,12 @@ def main():
                     signals[key]["timeframes"].append(tf)
 
                 # ================= BREAKOUT SELL =================
-                elif prev1.close < swing_low:
+                elif prev2.close >= swing_low and prev1.close < swing_low:
+
+                    state_key = f"{pair}_{tf}_BREAKOUT_SELL"
+                    if state.get(state_key) and state[state_key] >= candle_time:
+                        continue
+                    state[state_key] = candle_time
 
                     key = f"{pair}_BREAKOUT_SELL"
 
@@ -201,40 +225,36 @@ def main():
 
     for key, data in signals.items():
 
-        # ✅ Timeframe-aware freshness
         tf_seconds_list = [TF_SECONDS.get(tf, 300) for tf in data["timeframes"]]
         min_tf_sec = min(tf_seconds_list)
 
-        # ❌ Skip old signals
+        # skip old
         if now - data["candle"] > min_tf_sec * 2:
-            continue
-
-        # ❌ Prevent duplicate same candle
-        last_candle = state.get(key)
-        if last_candle == data["candle"]:
             continue
 
         pair = data["pair"]
         price = data["price"]
         utc = data["utc"]
+
+        # remove duplicates TF
         tfs = sorted(list(set(data["timeframes"])))
         tf_text = ", ".join(tfs)
 
         # ================= MESSAGE =================
         if data["type"] == "EMA_BUY":
             msg = (
-                f"🟢 <b>BUY | EMA 20 Cross Above EMA 50</b>\n\n"
+                f"🟢 <b>BUY | EMA 20 > EMA 50</b>\n\n"
                 f"📊 Pair: {pair}\n"
-                f"⏱ Timeframes: {tf_text}\n"
+                f"⏱ TF: {tf_text}\n"
                 f"💰 Price: {price:.2f}\n"
                 f"🕒 UTC: {utc}"
             )
 
         elif data["type"] == "EMA_SELL":
             msg = (
-                f"🔴 <b>SELL | EMA 20 Cross Below EMA 50</b>\n\n"
+                f"🔴 <b>SELL | EMA 20 < EMA 50</b>\n\n"
                 f"📊 Pair: {pair}\n"
-                f"⏱ Timeframes: {tf_text}\n"
+                f"⏱ TF: {tf_text}\n"
                 f"💰 Price: {price:.2f}\n"
                 f"🕒 UTC: {utc}"
             )
@@ -243,7 +263,7 @@ def main():
             msg = (
                 f"🚀 <b>BULLISH BREAKOUT</b>\n\n"
                 f"📊 Pair: {pair}\n"
-                f"⏱ Timeframes: {tf_text}\n"
+                f"⏱ TF: {tf_text}\n"
                 f"📈 Level: {data['level']:.2f}\n"
                 f"💰 Price: {price:.2f}\n"
                 f"🕒 UTC: {utc}"
@@ -253,7 +273,7 @@ def main():
             msg = (
                 f"📉 <b>BEARISH BREAKDOWN</b>\n\n"
                 f"📊 Pair: {pair}\n"
-                f"⏱ Timeframes: {tf_text}\n"
+                f"⏱ TF: {tf_text}\n"
                 f"📉 Level: {data['level']:.2f}\n"
                 f"💰 Price: {price:.2f}\n"
                 f"🕒 UTC: {utc}"
@@ -261,9 +281,6 @@ def main():
 
         send_telegram(msg)
         time.sleep(1)
-
-        # ✅ Save candle
-        state[key] = data["candle"]
 
     save_state(state)
 

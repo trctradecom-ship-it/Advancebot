@@ -20,7 +20,6 @@ LOOKBACK = 20
 
 STATE_FILE = "last_signal.json"
 
-# ✅ Timeframe-based validity
 TF_SECONDS = {
     "15m": 900,
     "30m": 1800,
@@ -28,7 +27,6 @@ TF_SECONDS = {
     "4h": 14400,
     "1d": 86400
 }
-
 
 # ================= TELEGRAM =================
 def send_telegram(msg):
@@ -128,16 +126,10 @@ def main():
                 swing_high = df["high"].iloc[-(LOOKBACK+2):-2].max()
                 swing_low  = df["low"].iloc[-(LOOKBACK+2):-2].min()
 
-                # ✅ FIX: convert ms → sec
                 candle_time = int(prev1["time"] / 1000)
 
                 # ================= EMA BUY =================
                 if prev2.ema20 <= prev2.ema50 and prev1.ema20 > prev1.ema50:
-
-                    state_key = f"{pair}_{tf}_EMA_BUY"
-                    if state.get(state_key) and state[state_key] >= candle_time:
-                        continue
-                    state[state_key] = candle_time
 
                     key = f"{pair}_EMA_BUY"
 
@@ -155,11 +147,6 @@ def main():
                 # ================= EMA SELL =================
                 elif prev2.ema20 >= prev2.ema50 and prev1.ema20 < prev1.ema50:
 
-                    state_key = f"{pair}_{tf}_EMA_SELL"
-                    if state.get(state_key) and state[state_key] >= candle_time:
-                        continue
-                    state[state_key] = candle_time
-
                     key = f"{pair}_EMA_SELL"
 
                     signals.setdefault(key, {
@@ -175,11 +162,6 @@ def main():
 
                 # ================= BREAKOUT BUY =================
                 if prev2.close <= swing_high and prev1.close > swing_high:
-
-                    state_key = f"{pair}_{tf}_BREAKOUT_BUY"
-                    if state.get(state_key) and state[state_key] >= candle_time:
-                        continue
-                    state[state_key] = candle_time
 
                     key = f"{pair}_BREAKOUT_BUY"
 
@@ -197,11 +179,6 @@ def main():
 
                 # ================= BREAKOUT SELL =================
                 elif prev2.close >= swing_low and prev1.close < swing_low:
-
-                    state_key = f"{pair}_{tf}_BREAKOUT_SELL"
-                    if state.get(state_key) and state[state_key] >= candle_time:
-                        continue
-                    state[state_key] = candle_time
 
                     key = f"{pair}_BREAKOUT_SELL"
 
@@ -225,22 +202,30 @@ def main():
 
     for key, data in signals.items():
 
+        # 🔥 ✅ GLOBAL DUPLICATE BLOCK (MAIN FIX)
+        global_key = f"{data['pair']}_{data['type']}"
+        last_candle_sent = state.get(global_key)
+
+        if last_candle_sent == data["candle"]:
+            continue  # skip duplicate
+
+        # update BEFORE sending
+        state[global_key] = data["candle"]
+
         tf_seconds_list = [TF_SECONDS.get(tf, 300) for tf in data["timeframes"]]
         min_tf_sec = min(tf_seconds_list)
 
-        # skip old
-        if now - data["candle"] > min_tf_sec * 2:
+        # ✅ strict validity (fix duplicate window)
+        if now - data["candle"] > min_tf_sec:
             continue
 
         pair = data["pair"]
         price = data["price"]
         utc = data["utc"]
 
-        # remove duplicates TF
         tfs = sorted(list(set(data["timeframes"])))
         tf_text = ", ".join(tfs)
 
-        # ================= MESSAGE =================
         if data["type"] == "EMA_BUY":
             msg = (
                 f"🟢 <b>BUY | EMA 20 > EMA 50</b>\n\n"

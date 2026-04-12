@@ -173,13 +173,18 @@ def main():
         tf_seconds = [TF_SECONDS.get(tf,300) for tf in data["timeframes"]]
         min_tf_sec = min(tf_seconds)
 
-        # ✅ validity (balanced)
+        # ✅ ONLY AFTER CANDLE CLOSE
+        if now < data["candle"] + min_tf_sec:
+            continue
+
+        # ✅ VALIDITY WINDOW
         if now - data["candle"] > min_tf_sec * 2:
             continue
 
-        # ✅ duplicate protection
-        global_key = f"{data['pair']}_{data['type']}"
-        if state.get(global_key) == data["candle"]:
+        # ✅ NO DUPLICATE SIGNALS (STRONG)
+        unique_id = f"{data['pair']}_{data['type']}_{data['candle']}"
+
+        if state.get(unique_id):
             continue
 
         pair = data["pair"]
@@ -227,8 +232,8 @@ def main():
 
         send_telegram(msg)
 
-        # save after sending
-        state[global_key] = data["candle"]
+        # save unique signal
+        state[unique_id] = True
 
         time.sleep(1)
 

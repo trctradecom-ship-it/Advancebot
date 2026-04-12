@@ -1,7 +1,6 @@
 import ccxt
 import pandas as pd
 import requests
-import json
 import os
 import time
 from datetime import datetime
@@ -17,8 +16,6 @@ TIMEFRAMES = ["15m","30m","1h","4h","1d"]
 EMA_FAST = 20
 EMA_SLOW = 50
 LOOKBACK = 20
-
-STATE_FILE = "last_signal.json"
 
 TF_SECONDS = {
     "15m": 900,
@@ -50,19 +47,6 @@ def send_telegram(msg):
         print("Telegram error:", e)
 
 
-# ================= STATE =================
-def load_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
-
-
 # ================= DATA =================
 def fetch_data(exchange, pair, tf):
     try:
@@ -79,7 +63,6 @@ def main():
         raise ValueError("BOT_TOKEN missing")
 
     exchange = ccxt.mexc({"enableRateLimit": True})
-    state = load_state()
     signals = {}
 
     # ================= BOT START (ONLY MANUAL RUN) =================
@@ -173,19 +156,12 @@ def main():
         tf_seconds = [TF_SECONDS.get(tf,300) for tf in data["timeframes"]]
         min_tf_sec = min(tf_seconds)
 
-        # ✅ Only AFTER candle close (with buffer)
+        # ✅ Only after candle CLOSE (with small buffer)
         if now < data["candle"] + min_tf_sec + 5:
             continue
 
         # ✅ Validity window
         if now - data["candle"] > min_tf_sec * 2:
-            continue
-
-        # ✅ FINAL DUPLICATE FIX (CRITICAL)
-        base_key = f"{data['pair']}_{data['type']}"
-
-        # if already sent for this candle → skip
-        if state.get(base_key) == data["candle"]:
             continue
 
         pair = data["pair"]
@@ -232,13 +208,7 @@ def main():
             )
 
         send_telegram(msg)
-
-        # ✅ save last candle per signal type
-        state[base_key] = data["candle"]
-
         time.sleep(1)
-
-    save_state(state)
 
 
 if __name__ == "__main__":

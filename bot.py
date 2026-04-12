@@ -173,18 +173,19 @@ def main():
         tf_seconds = [TF_SECONDS.get(tf,300) for tf in data["timeframes"]]
         min_tf_sec = min(tf_seconds)
 
-        # ✅ ONLY AFTER CANDLE CLOSE
-        if now < data["candle"] + min_tf_sec:
+        # ✅ Only AFTER candle close (with buffer)
+        if now < data["candle"] + min_tf_sec + 5:
             continue
 
-        # ✅ VALIDITY WINDOW
+        # ✅ Validity window
         if now - data["candle"] > min_tf_sec * 2:
             continue
 
-        # ✅ NO DUPLICATE SIGNALS (STRONG)
-        unique_id = f"{data['pair']}_{data['type']}_{data['candle']}"
+        # ✅ FINAL DUPLICATE FIX (CRITICAL)
+        base_key = f"{data['pair']}_{data['type']}"
 
-        if state.get(unique_id):
+        # if already sent for this candle → skip
+        if state.get(base_key) == data["candle"]:
             continue
 
         pair = data["pair"]
@@ -232,8 +233,8 @@ def main():
 
         send_telegram(msg)
 
-        # save unique signal
-        state[unique_id] = True
+        # ✅ save last candle per signal type
+        state[base_key] = data["candle"]
 
         time.sleep(1)
 

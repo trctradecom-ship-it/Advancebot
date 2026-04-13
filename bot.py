@@ -150,18 +150,24 @@ def main():
 
     # ================= SEND SIGNALS =================
     now = int(time.time())
+    sent_signals = set()  # 🔒 prevents duplicates in same run
 
     for key, data in signals.items():
 
         tf_seconds = [TF_SECONDS.get(tf,300) for tf in data["timeframes"]]
         min_tf_sec = min(tf_seconds)
 
-        # ✅ Only after candle CLOSE (with small buffer)
+        # ✅ Only after candle CLOSE
         if now < data["candle"] + min_tf_sec + 5:
             continue
 
         # ✅ Validity window
         if now - data["candle"] > min_tf_sec * 2:
+            continue
+
+        # 🔒 Prevent duplicate inside run
+        unique_id = f"{data['pair']}_{data['type']}_{data['candle']}"
+        if unique_id in sent_signals:
             continue
 
         pair = data["pair"]
@@ -208,6 +214,8 @@ def main():
             )
 
         send_telegram(msg)
+        sent_signals.add(unique_id)
+
         time.sleep(1)
 
 

@@ -4,6 +4,7 @@ import requests
 import os
 import time
 import json
+import subprocess
 from datetime import datetime
 
 # ================= TELEGRAM =================
@@ -41,6 +42,19 @@ def load_sent_signals():
 def save_sent_signals(data):
     with open(SIGNAL_FILE, "w") as f:
         json.dump(data, f)
+
+# ================= GITHUB PUSH =================
+def push_to_github():
+    try:
+        subprocess.run(["git", "config", "--global", "user.email", "bot@github.com"])
+        subprocess.run(["git", "config", "--global", "user.name", "crypto-bot"])
+
+        subprocess.run(["git", "add", SIGNAL_FILE])
+        subprocess.run(["git", "commit", "-m", "update signals"], check=False)
+        subprocess.run(["git", "push"], check=False)
+
+    except Exception as e:
+        print("Git push error:", e)
 
 # ================= TELEGRAM =================
 def send_telegram(msg):
@@ -189,11 +203,9 @@ def main():
         if "1d" in data["timeframes"]:
             day_key = f"{pair}_{signal_type}_1d"
 
-            # already sent today
             if day_key in sent_history:
                 continue
 
-            # wait full daily candle
             if now < data["candle"] + 86400:
                 continue
 
@@ -249,7 +261,10 @@ def main():
             )
 
         send_telegram(msg)
+
+        # ✅ Save + push to GitHub (THIS IS THE ONLY NEW ADDITION)
         save_sent_signals(sent_history)
+        push_to_github()
 
         time.sleep(1)
 

@@ -5,6 +5,9 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write   # 🔥 REQUIRED FOR PUSH
+
 concurrency:
   group: crypto-signals-bot
   cancel-in-progress: true
@@ -20,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true   # 🔥 important for git push
 
       - name: Setup Python
         uses: actions/setup-python@v5

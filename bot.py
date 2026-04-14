@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import os
 import time
+import json
 from datetime import datetime
 
 # ================= TELEGRAM =================
@@ -25,6 +26,22 @@ TF_SECONDS = {
     "1d": 86400
 }
 
+# ================= FILE STORAGE =================
+SIGNAL_FILE = "sent_signals.json"
+
+def load_sent_signals():
+    if os.path.exists(SIGNAL_FILE):
+        try:
+            with open(SIGNAL_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_sent_signals(data):
+    with open(SIGNAL_FILE, "w") as f:
+        json.dump(data, f)
+
 # ================= TELEGRAM =================
 def send_telegram(msg):
     if not BOT_TOKEN:
@@ -46,7 +63,6 @@ def send_telegram(msg):
     except Exception as e:
         print("Telegram error:", e)
 
-
 # ================= DATA =================
 def fetch_data(exchange, pair, tf):
     try:
@@ -54,7 +70,6 @@ def fetch_data(exchange, pair, tf):
         return pd.DataFrame(ohlcv, columns=["time","open","high","low","close","volume"])
     except:
         return None
-
 
 # ================= MAIN =================
 def main():
@@ -65,7 +80,9 @@ def main():
     exchange = ccxt.mexc({"enableRateLimit": True})
     signals = {}
 
-    # ================= BOT START (ONLY MANUAL RUN) =================
+    sent_history = load_sent_signals()
+
+    # ================= BOT START =================
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         send_telegram(
             "🤖 <b>Crypto Signals Bot Started</b>\n"
@@ -150,14 +167,13 @@ def main():
 
     # ================= SEND SIGNALS =================
     now = int(time.time())
-    sent_signals = set()  # 🔒 prevents duplicates in same run
 
     for key, data in signals.items():
 
         tf_seconds = [TF_SECONDS.get(tf,300) for tf in data["timeframes"]]
         min_tf_sec = min(tf_seconds)
 
-        # ✅ Only after candle CLOSE
+        # ✅ Candle close check
         if now < data["candle"] + min_tf_sec + 5:
             continue
 
@@ -165,12 +181,31 @@ def main():
         if now - data["candle"] > min_tf_sec * 2:
             continue
 
-        # 🔒 Prevent duplicate inside run
-        unique_id = f"{data['pair']}_{data['type']}_{data['candle']}"
-        if unique_id in sent_signals:
+        pair = data["pair"]
+        signal_type = data["type"]
+        candle_time = str(data["candle"])
+
+        # ================= 1D CONTROL =================
+        if "1d" in data["timeframes"]:
+            day_key = f"{pair}_{signal_type}_1d"
+
+            # already sent today
+            if day_key in sent_history:
+                continue
+
+            # wait full daily candle
+            if now < data["candle"] + 86400:
+                continue
+
+            sent_history[day_key] = candle_time
+
+        # ================= OTHER TF CONTROL =================
+        unique_id = f"{pair}_{signal_type}_{candle_time}"
+        if unique_id in sent_history:
             continue
 
-        pair = data["pair"]
+        sent_history[unique_id] = candle_time
+
         price = data["price"]
         utc = data["utc"]
         tf_text = ", ".join(sorted(set(data["timeframes"])))
@@ -214,10 +249,9 @@ def main():
             )
 
         send_telegram(msg)
-        sent_signals.add(unique_id)
+        save_sent_signals(sent_history)
 
         time.sleep(1)
-
 
 if __name__ == "__main__":
     main()

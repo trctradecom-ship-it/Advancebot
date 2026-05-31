@@ -12,7 +12,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = "-1003734649641"
 # ===========================================
 
-PAIRS = ["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT","PAXG/USDT"]
+PAIRS = ["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT","GOLD(PAXG)/USDT"]
 TIMEFRAMES = ["15m","30m","1h","4h","1d"]
 
 EMA_FAST = 20
